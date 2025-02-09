@@ -1,0 +1,4 @@
+S. No.,Date,Patient Name,Age,Gender,Husband Name,Father Name,Last Menstrual Period Date (LMP),Period of Gestation (POG),Expected Date of Delivery (EDD),Total number of children,Total number of girls,Total number of boys,Details of girls (age),Details of boys (age),Patient's present address,Patient's aadhar address,Referring Doctor Name,Referring Doctor Registration No.,Referring Doctor Address,Performing Doctor Registration No.,Performing Doctor Address,Performing Doctor Name,Indication(s)  of Ultrasound,Scan performed,Result Of USG Scan,Indication for MTP
+,,,,,,,Date provided by the patient,Calculated as in Patient Details Form,Date,5,,,,,,,,,,,,,,,,
+,,,,,,,27.12.2024,10 Weeks 2 Days,,,,,,,,,,,,,,,,,,
+,,,,,,,,,EDD = LMP + 280 days,,,,,,,,,,,,,,,,,

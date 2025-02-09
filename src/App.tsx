@@ -6,6 +6,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import AddPatient from './pages/AddPatient';
 import ProtectedRoute from './components/ProtectedRoute';
+import PatientDetails from './pages/PatientDetails';
 
 function App() {
   return (
@@ -27,6 +28,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AddPatient />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/patient-details/:id"
+            element={
+              <ProtectedRoute>
+                <PatientDetails />
               </ProtectedRoute>
             }
           />

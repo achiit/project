@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Minus, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
+import Header from '../components/Header';
 
 interface ChildFormData {
   gender: 'Male' | 'Female' | 'Other';
@@ -489,18 +490,25 @@ export default function AddPatient() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-[#FFF4E8]">
       {/* HEADER */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold text-gray-700">
+      <Header />
+      <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4'>
+        <div className='flex flex-col px-4 sm:px-6 lg:px-8 md:flex-row items-center justify-between bg-white shadow-sm rounded-lg'>
+          <h1 className="text-2xl py-4 font-bold text-gray-700">
             New Patient Registration
           </h1>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-[#774C60] text-white hover:bg-[#B75D69] transition-colors duration-200"
+          >
+            Back to Home
+          </button>
         </div>
-      </header>
+      </div>
 
       {/* MAIN CONTAINER */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col md:flex-row bg-white shadow-lg rounded-lg overflow-hidden">
           {/* ASIDE / SIDEBAR */}
           <aside className="w-full md:w-1/3 lg:w-1/4 bg-gray-50 border-r border-gray-200 p-6">
@@ -514,10 +522,9 @@ export default function AddPatient() {
                   <div
                     key={label}
                     className={`flex items-center px-4 py-3 rounded-lg cursor-pointer 
-                      ${
-                        isActive
-                          ? 'bg-[#774C60] text-white'
-                          : 'bg-white text-gray-700 border border-gray-200'
+                      ${isActive
+                        ? 'bg-[#774C60] text-white'
+                        : 'bg-white text-gray-700 border border-gray-200'
                       }
                       ${isCompleted ? 'opacity-80' : ''}
                     `}
@@ -529,10 +536,9 @@ export default function AddPatient() {
                   >
                     <div
                       className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full mr-4
-                        ${
-                          isCompleted
-                            ? 'bg-green-500 text-white'
-                            : isActive
+                        ${isCompleted
+                          ? 'bg-green-500 text-white'
+                          : isActive
                             ? 'border-2 border-white'
                             : 'border-2 border-gray-400'
                         }
@@ -991,11 +997,10 @@ export default function AddPatient() {
                               isSubmittingDoctor || newPerformingDoctors.length === 0
                             }
                             className={`inline-flex items-center px-6 py-2 rounded-lg text-white
-                              ${
-                                isSubmittingDoctor ||
+                              ${isSubmittingDoctor ||
                                 newPerformingDoctors.length === 0
-                                  ? 'bg-gray-300 cursor-not-allowed'
-                                  : 'bg-[#774C60] hover:bg-[#B75D69]'
+                                ? 'bg-gray-300 cursor-not-allowed'
+                                : 'bg-[#774C60] hover:bg-[#B75D69]'
                               }`}
                           >
                             {isSubmittingDoctor ? (
@@ -1180,11 +1185,10 @@ export default function AddPatient() {
                               isSubmittingDoctor || newReferringDoctors.length === 0
                             }
                             className={`inline-flex items-center px-6 py-2 rounded-lg text-white
-                              ${
-                                isSubmittingDoctor ||
+                              ${isSubmittingDoctor ||
                                 newReferringDoctors.length === 0
-                                  ? 'bg-gray-300 cursor-not-allowed'
-                                  : 'bg-[#774C60] hover:bg-[#B75D69]'
+                                ? 'bg-gray-300 cursor-not-allowed'
+                                : 'bg-[#774C60] hover:bg-[#B75D69]'
                               }`}
                           >
                             {isSubmittingDoctor ? (
@@ -1205,7 +1209,26 @@ export default function AddPatient() {
                       </div>
                     )}
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Indications
+                    </label>
+                    <div className="space-y-2">
+                      {indicationTypes.map(indication => (
+                        <label key={indication.id} className="flex items-start">
+                          <input
+                            type="checkbox"
+                            value={indication.id}
+                            {...register('selectedIndications')}
+                            className="mt-1 rounded border-gray-300 text-black focus:ring-black"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">{indication.indication}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+                
               )}
 
               {/* Step 4 - Consent */}
@@ -1318,11 +1341,10 @@ export default function AddPatient() {
                     type="button"
                     onClick={() => setStep(step + 1)}
                     disabled={!canProceedToNextStep()}
-                    className={`px-6 py-3 rounded-lg ${
-                      canProceedToNextStep()
-                        ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }`}
+                    className={`px-6 py-3 rounded-lg ${canProceedToNextStep()
+                      ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
                   >
                     Continue
                   </button>
@@ -1330,11 +1352,10 @@ export default function AddPatient() {
                   <button
                     type="submit"
                     disabled={!consentVerified}
-                    className={`px-6 py-3 rounded-lg ${
-                      consentVerified
-                        ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }`}
+                    className={`px-6 py-3 rounded-lg ${consentVerified
+                      ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
                   >
                     Submit
                   </button>
