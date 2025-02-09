@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { ArrowLeft, Plus, Minus, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'react-hot-toast';
 
 interface ChildFormData {
   gender: 'Male' | 'Female' | 'Other';
@@ -27,6 +28,21 @@ interface IndicationType {
   indication: string;
 }
 
+interface NewPerformingDoctor {
+  name: string;
+  qualifications: string;
+  registrationNumber: string;
+  contactInfo: string;
+}
+
+interface NewReferringDoctor {
+  name: string;
+  hospitalName: string;
+  hospitalAddress: string;
+  registrationNumber: string;
+  contactInfo: string;
+}
+
 interface PatientFormData {
   // Basic Information
   name: string;
@@ -36,7 +52,7 @@ interface PatientFormData {
   presentAddress: string;
   aadharCardAddress: string;
   contactNumber: string;
-  
+
   // Pregnancy Details
   lastMenstrualPeriod: string;
   numberOfChildrenAlive: number;
@@ -62,14 +78,27 @@ export default function AddPatient() {
   const [indicationTypes, setIndicationTypes] = useState<IndicationType[]>([]);
   const [showConsentOtp, setShowConsentOtp] = useState(false);
   const [consentVerified, setConsentVerified] = useState(false);
-  const { register, handleSubmit, formState: { errors }, setError, watch, setValue } = useForm<PatientFormData>({
+  const [showNewPerformingDoctor, setShowNewPerformingDoctor] = useState(false);
+  const [showNewReferringDoctor, setShowNewReferringDoctor] = useState(false);
+  const [newPerformingDoctors, setNewPerformingDoctors] = useState<NewPerformingDoctor[]>([]);
+  const [newReferringDoctors, setNewReferringDoctors] = useState<NewReferringDoctor[]>([]);
+  const [isSubmittingDoctor, setIsSubmittingDoctor] = useState(false);
+  const [doctorSubmissionError, setDoctorSubmissionError] = useState('');
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setError,
+    watch,
+    setValue
+  } = useForm<PatientFormData>({
     defaultValues: {
       age: 18,
       numberOfChildrenAlive: 0,
       children: [],
       selectedIndications: [],
-      procedureDate: new Date().toISOString().split('T')[0]
-    }
+      procedureDate: new Date().toISOString().split('T')[0],
+    },
   });
 
   const numberOfChildrenAlive = watch('numberOfChildrenAlive');
@@ -125,7 +154,7 @@ export default function AddPatient() {
     const today = new Date();
     const minDate = new Date();
     minDate.setMonth(today.getMonth() - 9);
-    
+
     if (lmpDate > today) {
       return 'LMP date cannot be in the future';
     }
@@ -150,7 +179,7 @@ export default function AddPatient() {
     if (!validatePhoneNumber(consentMobile)) {
       setError('consentMobile', {
         type: 'manual',
-        message: 'Please enter a valid mobile number'
+        message: 'Please enter a valid mobile number',
       });
       return;
     }
@@ -164,7 +193,7 @@ export default function AddPatient() {
     } else {
       setError('consentOtp', {
         type: 'manual',
-        message: 'Invalid OTP'
+        message: 'Invalid OTP',
       });
     }
   };
@@ -174,7 +203,7 @@ export default function AddPatient() {
       if (!consentVerified) {
         setError('consentOtp', {
           type: 'manual',
-          message: 'Please verify consent OTP before proceeding'
+          message: 'Please verify consent OTP before proceeding',
         });
         return;
       }
@@ -190,7 +219,7 @@ export default function AddPatient() {
           father_name: data.fatherName?.trim() || null,
           present_address: data.presentAddress.trim(),
           aadhar_card_address: data.aadharCardAddress?.trim() || null,
-          contact_number: data.contactNumber
+          contact_number: data.contactNumber,
         })
         .select()
         .single();
@@ -203,7 +232,7 @@ export default function AddPatient() {
         .insert({
           pregnant_woman_id: patientData.id,
           last_menstrual_period: data.lastMenstrualPeriod,
-          number_of_children_alive: data.numberOfChildrenAlive
+          number_of_children_alive: data.numberOfChildrenAlive,
         })
         .select()
         .single();
@@ -215,10 +244,10 @@ export default function AddPatient() {
         const { error: childrenError } = await supabase
           .from('children')
           .insert(
-            data.children.map(child => ({
+            data.children.map((child) => ({
               pregnancy_details_id: pregnancyData.id,
               gender: child.gender,
-              age_in_years: child.ageInYears
+              age_in_years: child.ageInYears,
             }))
           );
 
@@ -231,7 +260,7 @@ export default function AddPatient() {
         .insert({
           pregnant_woman_id: patientData.id,
           procedure_date: data.procedureDate,
-          attending_doctor_id: data.performingDoctorId
+          attending_doctor_id: data.performingDoctorId,
         })
         .select()
         .single();
@@ -243,9 +272,9 @@ export default function AddPatient() {
         const { error: indicationsError } = await supabase
           .from('procedure_indications')
           .insert(
-            data.selectedIndications.map(indicationId => ({
+            data.selectedIndications.map((indicationId) => ({
               procedure_id: procedureData.id,
-              indication_type_id: indicationId
+              indication_type_id: indicationId,
             }))
           );
 
@@ -259,7 +288,7 @@ export default function AddPatient() {
           pregnant_woman_id: patientData.id,
           mobile_number: data.consentMobile,
           otp_verified: true,
-          verification_details: `Verified at ${new Date().toISOString()}`
+          verification_details: `Verified at ${new Date().toISOString()}`,
         });
 
       if (consentError) throw consentError;
@@ -270,241 +299,463 @@ export default function AddPatient() {
       console.error('Error adding patient:', err);
       setError('root', {
         type: 'server',
-        message: 'Failed to register patient. Please try again.'
+        message: 'Failed to register patient. Please try again.',
       });
     }
   };
 
+  const canProceedToNextStep = () => {
+    switch (step) {
+      case 1:
+        return !errors.name && !errors.age && !errors.contactNumber;
+      case 2:
+        return !errors.lastMenstrualPeriod && !errors.numberOfChildrenAlive;
+      case 3:
+        return !errors.procedureDate && !errors.performingDoctorId;
+      default:
+        return true;
+    }
+  };
+
+  const addNewPerformingDoctor = () => {
+    setNewPerformingDoctors([
+      ...newPerformingDoctors,
+      { name: '', qualifications: '', registrationNumber: '', contactInfo: '' },
+    ]);
+  };
+
+  const removeNewPerformingDoctor = (index: number) => {
+    setNewPerformingDoctors(newPerformingDoctors.filter((_, i) => i !== index));
+  };
+
+  const updateNewPerformingDoctor = (
+    index: number,
+    field: keyof NewPerformingDoctor,
+    value: string
+  ) => {
+    const updatedDoctors = [...newPerformingDoctors];
+    updatedDoctors[index] = { ...updatedDoctors[index], [field]: value };
+    setNewPerformingDoctors(updatedDoctors);
+  };
+
+  const addNewReferringDoctor = () => {
+    setNewReferringDoctors([
+      ...newReferringDoctors,
+      {
+        name: '',
+        hospitalName: '',
+        hospitalAddress: '',
+        registrationNumber: '',
+        contactInfo: '',
+      },
+    ]);
+  };
+
+  const removeNewReferringDoctor = (index: number) => {
+    setNewReferringDoctors(newReferringDoctors.filter((_, i) => i !== index));
+  };
+
+  const updateNewReferringDoctor = (
+    index: number,
+    field: keyof NewReferringDoctor,
+    value: string
+  ) => {
+    const updatedDoctors = [...newReferringDoctors];
+    updatedDoctors[index] = { ...updatedDoctors[index], [field]: value };
+    setNewReferringDoctors(updatedDoctors);
+  };
+
+  // Function to submit new performing doctors
+  const handleSubmitNewPerformingDoctors = async () => {
+    try {
+      setIsSubmittingDoctor(true);
+      setDoctorSubmissionError('');
+
+      // Validate all required fields
+      const isValid = newPerformingDoctors.every(
+        (doctor) =>
+          doctor.name &&
+          doctor.qualifications &&
+          doctor.registrationNumber &&
+          doctor.contactInfo
+      );
+
+      if (!isValid) {
+        setDoctorSubmissionError('Please fill all required fields for all doctors');
+        return;
+      }
+
+      // Submit each doctor to the database
+      for (const doctor of newPerformingDoctors) {
+        const { error } = await supabase
+          .from('performing_doctors')
+          .insert([
+            {
+              name: doctor.name,
+              qualifications: doctor.qualifications,
+              registration_number: doctor.registrationNumber,
+              contact_info: doctor.contactInfo,
+              diagnostic_center_id: diagnosticCenter.id,
+            },
+          ]);
+        if (error) throw error;
+      }
+
+      // Refresh the performing doctors list
+      const { data: updatedDoctors } = await supabase
+        .from('performing_doctors')
+        .select('*')
+        .eq('diagnostic_center_id', diagnosticCenter.id);
+
+      if (updatedDoctors) {
+        setPerformingDoctors(updatedDoctors);
+      }
+
+      // Reset the new doctors form
+      setNewPerformingDoctors([]);
+      setShowNewPerformingDoctor(false);
+      toast.success('Doctors added successfully!');
+    } catch (error) {
+      setDoctorSubmissionError('Failed to add doctors. Please try again.');
+      console.error('Error adding doctors:', error);
+    } finally {
+      setIsSubmittingDoctor(false);
+    }
+  };
+
+  // Similar function for referring doctors
+  const handleSubmitNewReferringDoctors = async () => {
+    try {
+      setIsSubmittingDoctor(true);
+      setDoctorSubmissionError('');
+
+      const isValid = newReferringDoctors.every(
+        (doctor) =>
+          doctor.name &&
+          doctor.hospitalName &&
+          doctor.hospitalAddress &&
+          doctor.registrationNumber &&
+          doctor.contactInfo
+      );
+
+      if (!isValid) {
+        setDoctorSubmissionError('Please fill all required fields for all doctors');
+        return;
+      }
+
+      for (const doctor of newReferringDoctors) {
+        const { error } = await supabase
+          .from('referring_doctors')
+          .insert([
+            {
+              name: doctor.name,
+              hospital_name: doctor.hospitalName,
+              hospital_address: doctor.hospitalAddress,
+              registration_number: doctor.registrationNumber,
+              contact_info: doctor.contactInfo,
+              diagnostic_center_id: diagnosticCenter.id,
+            },
+          ]);
+        if (error) throw error;
+      }
+
+      // Refresh the referring doctors list
+      const { data: updatedDoctors } = await supabase
+        .from('referring_doctors')
+        .select('*')
+        .eq('diagnostic_center_id', diagnosticCenter.id);
+
+      if (updatedDoctors) {
+        setReferringDoctors(updatedDoctors);
+      }
+
+      setNewReferringDoctors([]);
+      setShowNewReferringDoctor(false);
+      toast.success('Referring doctors added successfully!');
+    } catch (error) {
+      setDoctorSubmissionError('Failed to add referring doctors. Please try again.');
+      console.error('Error adding referring doctors:', error);
+    } finally {
+      setIsSubmittingDoctor(false);
+    }
+  };
+
+  // Sidebar steps: you can adjust the labels or add icons if desired
+  const steps = [
+    'General Details',
+    'Family Details',
+    'Medical Details',
+    'Final Consent',
+  ];
+
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="py-6">
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="inline-flex items-center text-black hover:text-gray-700"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Dashboard
-          </button>
+    <div className="min-h-screen bg-gray-100">
+      {/* HEADER */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+          <h1 className="text-2xl font-bold text-gray-700">
+            New Patient Registration
+          </h1>
         </div>
+      </header>
 
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Add New Patient</h2>
+      {/* MAIN CONTAINER */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="flex flex-col md:flex-row bg-white shadow-lg rounded-lg overflow-hidden">
+          {/* ASIDE / SIDEBAR */}
+          <aside className="w-full md:w-1/3 lg:w-1/4 bg-gray-50 border-r border-gray-200 p-6">
+            <nav className="space-y-4">
+              {steps.map((label, index) => {
+                const stepIndex = index + 1;
+                const isActive = step === stepIndex;
+                const isCompleted = step > stepIndex;
 
+                return (
+                  <div
+                    key={label}
+                    className={`flex items-center px-4 py-3 rounded-lg cursor-pointer 
+                      ${
+                        isActive
+                          ? 'bg-[#774C60] text-white'
+                          : 'bg-white text-gray-700 border border-gray-200'
+                      }
+                      ${isCompleted ? 'opacity-80' : ''}
+                    `}
+                    onClick={() => {
+                      // Allow user to go to that step if needed, or just display
+                      // To keep the exact logic of "previous" and "next", you can omit the onClick here
+                      if (stepIndex < step) setStep(stepIndex);
+                    }}
+                  >
+                    <div
+                      className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full mr-4
+                        ${
+                          isCompleted
+                            ? 'bg-green-500 text-white'
+                            : isActive
+                            ? 'border-2 border-white'
+                            : 'border-2 border-gray-400'
+                        }
+                      `}
+                    >
+                      {isCompleted ? <Check size={16} /> : stepIndex}
+                    </div>
+                    <span className="font-medium">{label}</span>
+                  </div>
+                );
+              })}
+            </nav>
+          </aside>
+
+          {/* MAIN FORM AREA */}
+          <div className="flex-1 p-6 md:p-8">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              {errors.root && (
-                <div className="p-3 bg-red-50 text-red-700 rounded-md">
-                  {errors.root.message}
-                </div>
-              )}
-
-              {/* Step navigation */}
-              <div className="flex space-x-4 mb-6">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className={`px-4 py-2 rounded-md ${
-                    step === 1 ? 'bg-black text-white' : 'bg-gray-100'
-                  }`}
-                >
-                  Basic Information
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className={`px-4 py-2 rounded-md ${
-                    step === 2 ? 'bg-black text-white' : 'bg-gray-100'
-                  }`}
-                >
-                  Pregnancy Details
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep(3)}
-                  className={`px-4 py-2 rounded-md ${
-                    step === 3 ? 'bg-black text-white' : 'bg-gray-100'
-                  }`}
-                >
-                  Procedure Details
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  className={`px-4 py-2 rounded-md ${
-                    step === 4 ? 'bg-black text-white' : 'bg-gray-100'
-                  }`}
-                >
-                  Consent
-                </button>
-              </div>
-
-              {/* Basic Information - Step 1 */}
+              {/* Step 1 - Basic Information */}
               {step === 1 && (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                      Patient Name
-                    </label>
-                    <input
-                      type="text"
-                      id="name"
-                      {...register('name', { 
-                        required: 'Name is required',
-                        minLength: { value: 2, message: 'Name must be at least 2 characters' }
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                    {errors.name && (
-                      <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                    )}
-                  </div>
+                <div className="space-y-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                    General Details
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        First Name
+                      </label>
+                      <input
+                        type="text"
+                        {...register('name', {
+                          required: 'Name is required',
+                          minLength: {
+                            value: 2,
+                            message: 'Name must be at least 2 characters',
+                          },
+                        })}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                        placeholder="Enter first name"
+                      />
+                      {errors.name && (
+                        <p className="mt-1 text-sm text-red-500">
+                          {errors.name.message}
+                        </p>
+                      )}
+                    </div>
 
-                  <div>
-                    <label htmlFor="age" className="block text-sm font-medium text-gray-700">
-                      Age
-                    </label>
-                    <input
-                      type="number"
-                      id="age"
-                      {...register('age', { 
-                        required: 'Age is required',
-                        min: { value: 18, message: 'Age must be at least 18' },
-                        max: { value: 65, message: 'Age must be less than 65' }
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                    {errors.age && (
-                      <p className="mt-1 text-sm text-red-600">{errors.age.message}</p>
-                    )}
-                  </div>
+                    {/* Age */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Age
+                      </label>
+                      <input
+                        type="number"
+                        {...register('age', {
+                          required: 'Age is required',
+                          min: {
+                            value: 18,
+                            message: 'Age must be at least 18',
+                          },
+                          max: {
+                            value: 65,
+                            message: 'Age must be less than 65',
+                          },
+                        })}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                      />
+                      {errors.age && (
+                        <p className="mt-1 text-sm text-red-500">
+                          {errors.age.message}
+                        </p>
+                      )}
+                    </div>
 
-                  <div>
-                    <label htmlFor="husbandName" className="block text-sm font-medium text-gray-700">
-                      Husband's Name
-                    </label>
-                    <input
-                      type="text"
-                      id="husbandName"
-                      {...register('husbandName')}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
+                    {/* Husband's Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Husband's Name
+                      </label>
+                      <input
+                        type="text"
+                        {...register('husbandName')}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                      />
+                    </div>
 
-                  <div>
-                    <label htmlFor="fatherName" className="block text-sm font-medium text-gray-700">
-                      Father's Name
-                    </label>
-                    <input
-                      type="text"
-                      id="fatherName"
-                      {...register('fatherName')}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
+                    {/* Father's Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Father's Name
+                      </label>
+                      <input
+                        type="text"
+                        {...register('fatherName')}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                      />
+                    </div>
 
-                  <div className="sm:col-span-2">
-                    <label htmlFor="presentAddress" className="block text-sm font-medium text-gray-700">
-                      Present Address
-                    </label>
-                    <textarea
-                      id="presentAddress"
-                      rows={3}
-                      {...register('presentAddress', { 
-                        required: 'Present address is required',
-                        minLength: { value: 10, message: 'Address must be at least 10 characters' }
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                    {errors.presentAddress && (
-                      <p className="mt-1 text-sm text-red-600">{errors.presentAddress.message}</p>
-                    )}
-                  </div>
+                    {/* Present Address */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Present Address
+                      </label>
+                      <textarea
+                        {...register('presentAddress', {
+                          required: 'Present address is required',
+                          minLength: {
+                            value: 10,
+                            message: 'Address must be at least 10 characters',
+                          },
+                        })}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                        rows={3}
+                      />
+                      {errors.presentAddress && (
+                        <p className="mt-1 text-sm text-red-500">
+                          {errors.presentAddress.message}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="sm:col-span-2">
-                    <label htmlFor="aadharCardAddress" className="block text-sm font-medium text-gray-700">
-                      Aadhar Card Address
-                    </label>
-                    <textarea
-                      id="aadharCardAddress"
-                      rows={3}
-                      {...register('aadharCardAddress')}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
+                    {/* Aadhar Card Address */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Aadhar Card Address
+                      </label>
+                      <textarea
+                        {...register('aadharCardAddress')}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                        rows={3}
+                      />
+                    </div>
 
-                  <div>
-                    <label htmlFor="contactNumber" className="block text-sm font-medium text-gray-700">
-                      Contact Number
-                    </label>
-                    <input
-                      type="tel"
-                      id="contactNumber"
-                      {...register('contactNumber', { 
-                        required: 'Contact number is required',
-                        validate: validatePhoneNumber
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                      maxLength={10}
-                      pattern="[6-9][0-9]{9}"
-                    />
-                    {errors.contactNumber && (
-                      <p className="mt-1 text-sm text-red-600">{errors.contactNumber.message}</p>
-                    )}
+                    {/* Contact Number */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Contact Number
+                      </label>
+                      <input
+                        type="tel"
+                        {...register('contactNumber', {
+                          required: 'Contact number is required',
+                          validate: validatePhoneNumber,
+                        })}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                        maxLength={10}
+                        pattern="[6-9][0-9]{9}"
+                      />
+                      {errors.contactNumber && (
+                        <p className="mt-1 text-sm text-red-500">
+                          {errors.contactNumber.message}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Pregnancy Details - Step 2 */}
+              {/* Step 2 - Pregnancy Details */}
               {step === 2 && (
                 <div className="space-y-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                    Family Details
+                  </h2>
+                  {/* LMP */}
                   <div>
-                    <label htmlFor="lastMenstrualPeriod" className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Last Menstrual Period (LMP)
                     </label>
                     <input
                       type="date"
-                      id="lastMenstrualPeriod"
                       {...register('lastMenstrualPeriod', {
                         required: 'LMP is required',
-                        validate: validateLMP
+                        validate: validateLMP,
                       })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
                     />
                     {errors.lastMenstrualPeriod && (
-                      <p className="mt-1 text-sm text-red-600">{errors.lastMenstrualPeriod.message}</p>
+                      <p className="mt-1 text-sm text-red-500">
+                        {errors.lastMenstrualPeriod.message}
+                      </p>
                     )}
                   </div>
 
+                  {/* Number of Children */}
                   <div>
-                    <label htmlFor="numberOfChildrenAlive" className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Number of Children Alive
                     </label>
                     <input
                       type="number"
-                      id="numberOfChildrenAlive"
-                      min="0"
-                      max="10"
                       {...register('numberOfChildrenAlive', {
                         required: 'This field is required',
-                        min: { value: 0, message: 'Cannot be negative' },
-                        max: { value: 10, message: 'Cannot be more than 10' }
+                        min: {
+                          value: 0,
+                          message: 'Cannot be negative',
+                        },
+                        max: {
+                          value: 10,
+                          message: 'Cannot be more than 10',
+                        },
                       })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
                     />
                     {errors.numberOfChildrenAlive && (
-                      <p className="mt-1 text-sm text-red-600">{errors.numberOfChildrenAlive.message}</p>
+                      <p className="mt-1 text-sm text-red-500">
+                        {errors.numberOfChildrenAlive.message}
+                      </p>
                     )}
                   </div>
 
+                  {/* Children Details */}
                   {numberOfChildrenAlive > 0 && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium text-gray-900">Children Details</h3>
+                        <h3 className="text-lg font-medium text-gray-900">
+                          Children Details
+                        </h3>
                         <button
                           type="button"
                           onClick={addChild}
-                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+                          className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800"
                         >
                           <Plus className="h-4 w-4 mr-1" />
                           Add Child
@@ -514,7 +765,9 @@ export default function AddPatient() {
                       {watch('children')?.map((_, index) => (
                         <div key={index} className="p-4 border rounded-md space-y-4">
                           <div className="flex justify-between items-center">
-                            <h4 className="text-md font-medium">Child {index + 1}</h4>
+                            <h4 className="text-md font-medium">
+                              Child {index + 1}
+                            </h4>
                             <button
                               type="button"
                               onClick={() => removeChild(index)}
@@ -525,6 +778,7 @@ export default function AddPatient() {
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
+                            {/* Gender */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700">
                                 Gender
@@ -539,6 +793,7 @@ export default function AddPatient() {
                               </select>
                             </div>
 
+                            {/* Age */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700">
                                 Age (Years)
@@ -547,7 +802,10 @@ export default function AddPatient() {
                                 type="number"
                                 {...register(`children.${index}.ageInYears`, {
                                   required: 'Age is required',
-                                  min: { value: 0, message: 'Age cannot be negative' }
+                                  min: {
+                                    value: 0,
+                                    message: 'Age cannot be negative',
+                                  },
                                 })}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
                               />
@@ -560,111 +818,422 @@ export default function AddPatient() {
                 </div>
               )}
 
-              {/* Procedure Details - Step 3 */}
+              {/* Step 3 - Procedure Details */}
               {step === 3 && (
                 <div className="space-y-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                    Medical Details
+                  </h2>
+
+                  {/* Procedure Date */}
                   <div>
-                    <label htmlFor="procedureDate" className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Procedure Date
                     </label>
                     <input
                       type="date"
-                      id="procedureDate"
                       {...register('procedureDate', {
-                        required: 'Procedure date is required'
+                        required: 'Procedure date is required',
                       })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
                     />
                     {errors.procedureDate && (
-                      <p className="mt-1 text-sm text-red-600">{errors.procedureDate.message}</p>
+                      <p className="mt-1 text-sm text-red-500">
+                        {errors.procedureDate.message}
+                      </p>
                     )}
                   </div>
 
-                  <div>
-                    <label htmlFor="performingDoctorId" className="block text-sm font-medium text-gray-700">
+                  {/* Performing Doctor */}
+                  <div className="space-y-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Performing Doctor
                     </label>
-                    <select
-                      id="performingDoctorId"
-                      {...register('performingDoctorId', {
-                        required: 'Please select a performing doctor'
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    >
-                      <option value="">Select a doctor</option>
-                      {performingDoctors.map(doctor => (
-                        <option key={doctor.id} value={doctor.id}>
-                          {doctor.name} - {doctor.qualifications}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.performingDoctorId && (
-                      <p className="mt-1 text-sm text-red-600">{errors.performingDoctorId.message}</p>
+                    <div className="flex items-center space-x-4">
+                      <select
+                        {...register('performingDoctorId', {
+                          required: !showNewPerformingDoctor && 'Please select a performing doctor',
+                        })}
+                        disabled={showNewPerformingDoctor}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                      >
+                        <option value="">Select existing doctor</option>
+                        {performingDoctors.map((doctor) => (
+                          <option key={doctor.id} value={doctor.id}>
+                            {doctor.name} - {doctor.qualifications}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewPerformingDoctor(!showNewPerformingDoctor);
+                          if (!showNewPerformingDoctor) {
+                            addNewPerformingDoctor();
+                          } else {
+                            setNewPerformingDoctors([]);
+                          }
+                        }}
+                        className="px-8 py-2 text-sm font-medium rounded-md text-white bg-[#774C60] hover:bg-[#B75D69]"
+                      >
+                        {showNewPerformingDoctor ? 'Select' : 'Add New'}
+                      </button>
+                    </div>
+
+                    {showNewPerformingDoctor && (
+                      <div className="space-y-4 mt-4">
+                        {newPerformingDoctors.map((doctor, index) => (
+                          <div
+                            key={index}
+                            className="border rounded-lg p-4 space-y-4"
+                          >
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-md font-medium">
+                                New Doctor {index + 1}
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => removeNewPerformingDoctor(index)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.name}
+                                  onChange={(e) =>
+                                    updateNewPerformingDoctor(
+                                      index,
+                                      'name',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewPerformingDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Qualifications
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.qualifications}
+                                  onChange={(e) =>
+                                    updateNewPerformingDoctor(
+                                      index,
+                                      'qualifications',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewPerformingDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Registration Number
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.registrationNumber}
+                                  onChange={(e) =>
+                                    updateNewPerformingDoctor(
+                                      index,
+                                      'registrationNumber',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewPerformingDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Contact Info
+                                </label>
+                                <input
+                                  type="tel"
+                                  value={doctor.contactInfo}
+                                  onChange={(e) =>
+                                    updateNewPerformingDoctor(
+                                      index,
+                                      'contactInfo',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewPerformingDoctor}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between mt-6">
+                          <button
+                            type="button"
+                            onClick={addNewPerformingDoctor}
+                            className="inline-flex items-center px-4 py-2 text-sm text-[#774C60] hover:text-[#B75D69]"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Another Doctor
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSubmitNewPerformingDoctors}
+                            disabled={
+                              isSubmittingDoctor || newPerformingDoctors.length === 0
+                            }
+                            className={`inline-flex items-center px-6 py-2 rounded-lg text-white
+                              ${
+                                isSubmittingDoctor ||
+                                newPerformingDoctors.length === 0
+                                  ? 'bg-gray-300 cursor-not-allowed'
+                                  : 'bg-[#774C60] hover:bg-[#B75D69]'
+                              }`}
+                          >
+                            {isSubmittingDoctor ? (
+                              <>
+                                <span className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                                Submitting...
+                              </>
+                            ) : (
+                              'Add This'
+                            )}
+                          </button>
+                        </div>
+                        {doctorSubmissionError && (
+                          <p className="text-red-500 text-sm mt-2">
+                            {doctorSubmissionError}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  <div>
-                    <label htmlFor="referringDoctorId" className="block text-sm font-medium text-gray-700">
-                      Referring Doctor
+                  {/* Referring Doctor (Optional) */}
+                  <div className="space-y-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Referring Doctor (Optional)
                     </label>
-                    <select
-                      id="referringDoctorId"
-                      {...register('referringDoctorId')}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                    >
-                      <option value="">Select a referring doctor (optional)</option>
-                      {referringDoctors.map(doctor => (
-                        <option key={doctor.id} value={doctor.id}>
-                          {doctor.name} - {doctor.hospital_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Indications
-                    </label>
-                    <div className="space-y-2">
-                      {indicationTypes.map(indication => (
-                        <label key={indication.id} className="flex items-start">
-                          <input
-                            type="checkbox"
-                            value={indication.id}
-                            {...register('selectedIndications')}
-                            className="mt-1 rounded border-gray-300 text-black focus:ring-black"
-                          />
-                          <span className="ml-2 text-sm text-gray-700">{indication.indication}</span>
-                        </label>
-                      ))}
+                    <div className="flex items-center space-x-4">
+                      <select
+                        {...register('referringDoctorId')}
+                        disabled={showNewReferringDoctor}
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
+                      >
+                        <option value="">Select existing doctor</option>
+                        {referringDoctors.map((doctor) => (
+                          <option key={doctor.id} value={doctor.id}>
+                            {doctor.name} - {doctor.hospital_name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewReferringDoctor(!showNewReferringDoctor);
+                          if (!showNewReferringDoctor) {
+                            addNewReferringDoctor();
+                          } else {
+                            setNewReferringDoctors([]);
+                          }
+                        }}
+                        className="px-8 py-2 text-sm font-medium rounded-md text-white bg-[#774C60] hover:bg-[#B75D69]"
+                      >
+                        {showNewReferringDoctor ? 'Select' : 'Add New'}
+                      </button>
                     </div>
+
+                    {showNewReferringDoctor && (
+                      <div className="space-y-4 mt-4">
+                        {newReferringDoctors.map((doctor, index) => (
+                          <div
+                            key={index}
+                            className="border rounded-lg p-4 space-y-4"
+                          >
+                            <div className="flex justify-between items-center">
+                              <h4 className="text-md font-medium">
+                                New Referring Doctor {index + 1}
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => removeNewReferringDoctor(index)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.name}
+                                  onChange={(e) =>
+                                    updateNewReferringDoctor(
+                                      index,
+                                      'name',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewReferringDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Hospital Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.hospitalName}
+                                  onChange={(e) =>
+                                    updateNewReferringDoctor(
+                                      index,
+                                      'hospitalName',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewReferringDoctor}
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Hospital Address
+                                </label>
+                                <textarea
+                                  value={doctor.hospitalAddress}
+                                  onChange={(e) =>
+                                    updateNewReferringDoctor(
+                                      index,
+                                      'hospitalAddress',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  rows={2}
+                                  required={showNewReferringDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Registration Number
+                                </label>
+                                <input
+                                  type="text"
+                                  value={doctor.registrationNumber}
+                                  onChange={(e) =>
+                                    updateNewReferringDoctor(
+                                      index,
+                                      'registrationNumber',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewReferringDoctor}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Contact Info
+                                </label>
+                                <input
+                                  type="tel"
+                                  value={doctor.contactInfo}
+                                  onChange={(e) =>
+                                    updateNewReferringDoctor(
+                                      index,
+                                      'contactInfo',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="mt-1 block w-full rounded-lg border border-gray-300 px-4 py-3"
+                                  required={showNewReferringDoctor}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between mt-6">
+                          <button
+                            type="button"
+                            onClick={addNewReferringDoctor}
+                            className="inline-flex items-center px-4 py-2 text-sm text-[#774C60] hover:text-[#B75D69]"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Another Doctor
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSubmitNewReferringDoctors}
+                            disabled={
+                              isSubmittingDoctor || newReferringDoctors.length === 0
+                            }
+                            className={`inline-flex items-center px-6 py-2 rounded-lg text-white
+                              ${
+                                isSubmittingDoctor ||
+                                newReferringDoctors.length === 0
+                                  ? 'bg-gray-300 cursor-not-allowed'
+                                  : 'bg-[#774C60] hover:bg-[#B75D69]'
+                              }`}
+                          >
+                            {isSubmittingDoctor ? (
+                              <>
+                                <span className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                                Submitting...
+                              </>
+                            ) : (
+                              'Add This'
+                            )}
+                          </button>
+                        </div>
+                        {doctorSubmissionError && (
+                          <p className="text-red-500 text-sm mt-2">
+                            {doctorSubmissionError}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Consent - Step 4 */}
+              {/* Step 4 - Consent */}
               {step === 4 && (
                 <div className="space-y-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                    Final Consent
+                  </h2>
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-600">
-                      Patient consent is required before proceeding with the procedure. 
-                      Please verify the patient's mobile number through OTP verification.
+                      Patient consent is required before proceeding with the
+                      procedure. Please verify the patient's mobile number
+                      through OTP verification.
                     </p>
                   </div>
 
                   <div>
-                    <label htmlFor="consentMobile" className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Patient's Mobile Number for Consent
                     </label>
                     <div className="mt-1 flex space-x-4">
                       <input
                         type="tel"
-                        id="consentMobile"
                         {...register('consentMobile', {
                           required: 'Mobile number is required for consent',
-                          validate: validatePhoneNumber
+                          validate: validatePhoneNumber,
                         })}
-                        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
                         maxLength={10}
                         pattern="[6-9][0-9]{9}"
                         disabled={showConsentOtp}
@@ -673,45 +1242,53 @@ export default function AddPatient() {
                         <button
                           type="button"
                           onClick={handleSendConsentOtp}
-                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#774C60] hover:bg-[#B75D69]"
                         >
                           Send OTP
                         </button>
                       )}
                     </div>
                     {errors.consentMobile && (
-                      <p className="mt-1 text-sm text-red-600">{errors.consentMobile.message}</p>
+                      <p className="mt-1 text-sm text-red-500">
+                        {errors.consentMobile.message}
+                      </p>
                     )}
                   </div>
 
                   {showConsentOtp && !consentVerified && (
                     <div>
-                      <label htmlFor="consentOtp" className="block text-sm font-medium text-gray-700">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Enter OTP
                       </label>
                       <div className="mt-1 flex space-x-4">
                         <input
                           type="text"
-                          id="consentOtp"
                           {...register('consentOtp', {
                             required: 'OTP is required',
-                            minLength: { value: 6, message: 'OTP must be 6 digits' }
+                            minLength: {
+                              value: 6,
+                              message: 'OTP must be 6 digits',
+                            },
                           })}
-                          className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                          className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#774C60] focus:ring-1 focus:ring-[#774C60]"
                           maxLength={6}
                         />
                         <button
                           type="button"
                           onClick={handleVerifyConsentOtp}
-                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800"
                         >
                           Verify OTP
                         </button>
                       </div>
                       {errors.consentOtp && (
-                        <p className="mt-1 text-sm text-red-600">{errors.consentOtp.message}</p>
+                        <p className="mt-1 text-sm text-red-500">
+                          {errors.consentOtp.message}
+                        </p>
                       )}
-                      <p className="mt-2 text-sm text-gray-500">Use 123456 as the OTP for testing</p>
+                      <p className="mt-2 text-sm text-gray-500">
+                        Use 123456 as the OTP for testing
+                      </p>
                     </div>
                   )}
 
@@ -724,33 +1301,39 @@ export default function AddPatient() {
                 </div>
               )}
 
-              <div className="flex justify-between">
+              {/* NAVIGATION BUTTONS */}
+              <div className="flex justify-between pt-6">
                 {step > 1 && (
                   <button
                     type="button"
                     onClick={() => setStep(step - 1)}
-                    className="bg-gray-100 text-gray-800 rounded-md py-2 px-4 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                    className="px-6 py-3 text-[#774C60] border border-[#774C60] rounded-lg hover:bg-[#774C60] hover:text-white"
                   >
                     Previous
                   </button>
                 )}
-                
+
                 {step < 4 ? (
                   <button
                     type="button"
                     onClick={() => setStep(step + 1)}
-                    className="bg-black text-white rounded-md py-2 px-4 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+                    disabled={!canProceedToNextStep()}
+                    className={`px-6 py-3 rounded-lg ${
+                      canProceedToNextStep()
+                        ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
                   >
-                    Next
+                    Continue
                   </button>
                 ) : (
                   <button
                     type="submit"
                     disabled={!consentVerified}
-                    className={`rounded-md py-2 px-4 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    className={`px-6 py-3 rounded-lg ${
                       consentVerified
-                        ? 'bg-black text-white hover:bg-gray-800 focus:ring-black'
-                        : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                        ? 'bg-[#774C60] text-white hover:bg-[#B75D69]'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     }`}
                   >
                     Submit
@@ -764,5 +1347,3 @@ export default function AddPatient() {
     </div>
   );
 }
-
-                
