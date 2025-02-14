@@ -42,9 +42,8 @@ interface ExportPatientData {
   'Referring Doctor Name': string;
   'Referring Doctor Registration No.': string;
   'Referring Doctor Address': string;
-  'Performing Doctor Registration No.': string;
-  'Performing Doctor Address': string;
   'Performing Doctor Name': string;
+  'Performing Doctor Registration No.': string;
   'Indication(s) of Ultrasound': string;
   'Scan performed': string;
   'Result Of USG Scan': string;
@@ -59,14 +58,17 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [patientsPerPage] = useState(10);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [noDataMessage, setNoDataMessage] = useState('');
+  const [aadharSearchTerm, setAadharSearchTerm] = useState('');
 
   useEffect(() => {
     fetchPatients();
-  }, []);
+  }, [aadharSearchTerm]);
 
   const fetchPatients = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('pregnant_women')
         .select(`
           *,
@@ -78,8 +80,17 @@ export default function Dashboard() {
             period_of_gestation_days
           )
         `)
-        .eq('diagnostic_center_id', diagnosticCenter.id)
         .order('created_at', { ascending: false });
+
+      // If searching by Aadhar, search across all centers
+      if (aadharSearchTerm) {
+        query = query.ilike('aadhar_number', `%${aadharSearchTerm}%`);
+      } else {
+        // Otherwise, only show patients from current center
+        query = query.eq('diagnostic_center_id', diagnosticCenter.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setPatients(data || []);
@@ -112,12 +123,13 @@ export default function Dashboard() {
   const exportToCSV = async () => {
     try {
       setLoading(true);
+      setNoDataMessage('');
       
-      // Get current date and first day of current month
-      const now = new Date();
-      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Get first and last day of the selected month
+      const firstDayOfMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
+      const lastDayOfMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0);
       
-      // Fetch detailed patient data for the current month
+      // Fetch detailed patient data for the selected month
       const { data: monthlyData, error } = await supabase
         .from('pregnant_women')
         .select(`
@@ -132,24 +144,35 @@ export default function Dashboard() {
           ),
           procedures (
             procedure_date,
-            attending_doctor:performing_doctors (
+            referring_doctor:referring_doctors (
               name,
               registration_number,
-              contact_info
+              hospital_address
             ),
-         
+            attending_doctor:performing_doctors (
+              name,
+              registration_number
+            ),
             procedure_indications (
               indication_type:indication_types (
                 indication
               )
+            ),
+            scan:scans (
+              name
             )
           )
         `)
         .eq('diagnostic_center_id', diagnosticCenter.id)
         .gte('created_at', firstDayOfMonth.toISOString())
-        .lte('created_at', now.toISOString());
+        .lte('created_at', lastDayOfMonth.toISOString());
 
       if (error) throw error;
+
+      if (!monthlyData || monthlyData.length === 0) {
+        setNoDataMessage('No data available for this month.');
+        return;
+      }
 
       // Transform data to CSV format
       const csvData: ExportPatientData[] = monthlyData.map((patient, index) => {
@@ -157,13 +180,18 @@ export default function Dashboard() {
         const lmp = patient.pregnancy_details?.[0]?.last_menstrual_period;
         const edd = lmp ? new Date(new Date(lmp).getTime() + (280 * 24 * 60 * 60 * 1000)) : null;
 
+        // Calculate gestation period
+        const gestationPeriod = lmp ? calculateGestationPeriod(lmp) : '';
+
         // Separate children by gender
         const children = patient.pregnancy_details?.[0]?.children || [];
         const girls = children.filter(child => child.gender.toLowerCase() === 'female');
         const boys = children.filter(child => child.gender.toLowerCase() === 'male');
 
-        // Get latest procedure details
-        const latestProcedure = patient.procedures?.[0];
+        // Get referring and performing doctor details
+        const referringDoctor = patient.procedures?.[0]?.referring_doctor;
+        const performingDoctor = patient.procedures?.[0]?.attending_doctor;
+        const scanPerformed = patient.procedures?.[0]?.scan?.name || '';
 
         return {
           'S. No.': index + 1,
@@ -174,9 +202,7 @@ export default function Dashboard() {
           'Husband Name': patient.husband_name || '',
           'Father Name': patient.father_name || '',
           'Last Menstrual Period Date (LMP)': lmp ? new Date(lmp).toLocaleDateString() : '',
-          'Period of Gestation (POG)': patient.pregnancy_details_with_gestation?.[0] 
-            ? `${patient.pregnancy_details_with_gestation[0].period_of_gestation_weeks} Weeks ${patient.pregnancy_details_with_gestation[0].period_of_gestation_days} Days`
-            : '',
+          'Period of Gestation (POG)': gestationPeriod,
           'Expected Date of Delivery (EDD)': edd ? edd.toLocaleDateString() : '',
           'Total number of children': patient.pregnancy_details?.[0]?.number_of_children_alive || 0,
           'Total number of girls': girls.length,
@@ -185,16 +211,15 @@ export default function Dashboard() {
           'Details of boys (age)': boys.map(b => b.age_in_years).join(', '),
           'Patient\'s present address': patient.present_address,
           'Patient\'s aadhar address': patient.aadhar_card_address,
-          'Referring Doctor Name': latestProcedure?.referring_doctor?.name || '', // Add if you have this data
-          'Referring Doctor Registration No.': latestProcedure?.referring_doctor?.registration_number || '',
-          'Referring Doctor Address': latestProcedure?.referring_doctor?.hospital_address || '',
-          'Performing Doctor Registration No.': latestProcedure?.attending_doctor?.registration_number || '',
-          'Performing Doctor Address': latestProcedure?.attending_doctor?.address || '',
-          'Performing Doctor Name': latestProcedure?.attending_doctor?.name || '',
-          'Indication(s) of Ultrasound': latestProcedure?.procedure_indications
+          'Referring Doctor Name': referringDoctor?.name || '',
+          'Referring Doctor Registration No.': referringDoctor?.registration_number || '',
+          'Referring Doctor Address': referringDoctor?.hospital_address || '',
+          'Performing Doctor Name': performingDoctor?.name || '',
+          'Performing Doctor Registration No.': performingDoctor?.registration_number || '',
+          'Indication(s) of Ultrasound': patient.procedures?.[0]?.procedure_indications
             ?.map(pi => pi.indication_type.indication)
             .join('; ') || '',
-          'Scan performed': 'Yes',
+          'Scan performed': scanPerformed,
           'Result Of USG Scan': '', // Add if you have this data
           'Indication for MTP': '' // Add if you have this data
         };
@@ -212,7 +237,7 @@ export default function Dashboard() {
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `patient_data_${now.toLocaleDateString()}.csv`);
+      link.setAttribute('download', `patient_data_${selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -223,6 +248,16 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateGestationPeriod = (lmp: string) => {
+    const lmpDate = new Date(lmp);
+    const now = new Date();
+    const diff = now.getTime() - lmpDate.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const weeks = Math.floor(days / 7);
+    const remainingDays = days % 7;
+    return `${weeks} Weeks ${remainingDays} Days`;
   };
 
   return (
@@ -286,6 +321,12 @@ export default function Dashboard() {
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <h2 className="text-2xl font-bold text-[#774C60]">Recent Patients</h2>
+              <input
+                type="month"
+                value={selectedMonth.toISOString().slice(0, 7)}
+                onChange={(e) => setSelectedMonth(new Date(e.target.value))}
+                className="border border-gray-300 rounded-lg px-4 py-2"
+              />
               <button
                 onClick={exportToCSV}
                 className="inline-flex items-center px-4 py-2 rounded-lg bg-[#774C60] text-white hover:bg-[#B75D69] transition-colors duration-200"
@@ -297,12 +338,18 @@ export default function Dashboard() {
             </div>
             <input
               type="text"
-              placeholder="Search by name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by Aadhar number..."
+              value={aadharSearchTerm}
+              onChange={(e) => setAadharSearchTerm(e.target.value)}
               className="border border-gray-300 rounded-lg px-4 py-2"
             />
           </div>
+          
+          {noDataMessage && (
+            <div className="p-8 text-center">
+              <p className="text-gray-500 text-lg">{noDataMessage}</p>
+            </div>
+          )}
           
           {loading ? (
             <div className="p-8 text-center">

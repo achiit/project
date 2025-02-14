@@ -32,6 +32,18 @@ interface ReferringDoctor {
   contactInfo: string;
 }
 
+const PERFORMING_DOCTOR_QUALIFICATIONS = [
+  'Radiologist (MD/DNB Radiology, DMRD)',
+  'Gynecologist (MS/DNB Gynecology)',
+  'Sonologist (MBBS with 6 months ultrasound certification)'
+];
+
+const REFERRING_DOCTOR_QUALIFICATIONS = [
+  'Gynecologist (MS/DNB Gynecology)',
+  'General Physician (MBBS)',
+  'General Physician - AYUSH (BAMS/BHMS)'
+];
+
 export default function Register() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -557,20 +569,27 @@ export default function Register() {
                           <input
                             type="text"
                             value={doctor.name}
-                            onChange={(e) => updatePerformingDoctor(index, 'name', e.target.value)}
+                            onChange={(e) => updatePerformingDoctor(index, 'name', 
+                              e.target.value.startsWith('Dr. ') ? e.target.value : `Dr. ${e.target.value}`
+                            )}
                             className="mt-1 block w-full rounded-lg border border-[#DEB6AB] px-4 py-3 text-gray-900 focus:border-[#B75D69] focus:outline-none focus:ring-1 focus:ring-[#B75D69]"
                             required
+                            placeholder="Dr. "
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-[#774C60]">Qualifications</label>
-                          <input
-                            type="text"
+                          <select
                             value={doctor.qualifications}
                             onChange={(e) => updatePerformingDoctor(index, 'qualifications', e.target.value)}
                             className="mt-1 block w-full rounded-lg border border-[#DEB6AB] px-4 py-3 text-gray-900 focus:border-[#B75D69] focus:outline-none focus:ring-1 focus:ring-[#B75D69]"
                             required
-                          />
+                          >
+                            <option value="">Select Qualification</option>
+                            {PERFORMING_DOCTOR_QUALIFICATIONS.map((qual) => (
+                              <option key={qual} value={qual}>{qual}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-[#774C60]">Registration Number</label>
@@ -630,10 +649,27 @@ export default function Register() {
                           <input
                             type="text"
                             value={doctor.name}
-                            onChange={(e) => updateReferringDoctor(index, 'name', e.target.value)}
+                            onChange={(e) => updateReferringDoctor(index, 'name',
+                              e.target.value.startsWith('Dr. ') ? e.target.value : `Dr. ${e.target.value}`
+                            )}
                             className="mt-1 block w-full rounded-lg border border-[#DEB6AB] px-4 py-3 text-gray-900 focus:border-[#B75D69] focus:outline-none focus:ring-1 focus:ring-[#B75D69]"
                             required
+                            placeholder="Dr. "
                           />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#774C60]">Qualifications</label>
+                          <select
+                            value={doctor.qualifications}
+                            onChange={(e) => updateReferringDoctor(index, 'qualifications', e.target.value)}
+                            className="mt-1 block w-full rounded-lg border border-[#DEB6AB] px-4 py-3 text-gray-900 focus:border-[#B75D69] focus:outline-none focus:ring-1 focus:ring-[#B75D69]"
+                            required
+                          >
+                            <option value="">Select Qualification</option>
+                            {REFERRING_DOCTOR_QUALIFICATIONS.map((qual) => (
+                              <option key={qual} value={qual}>{qual}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-[#774C60]">Hospital Name</label>
